@@ -78,6 +78,11 @@ pub fn build(b: *Build) void {
         .root_source_file = b.path("carts/space-shooter/src/main.zig"),
     });
     add_cart(b, &dep, .{
+        .name = "sycl-snake",
+        .optimize = .ReleaseSmall,
+        .root_source_file = b.path("carts/sycl-snake/src/main.zig"),
+    });
+    add_cart(b, &dep, .{
         .name = "blobs",
         .optimize = .ReleaseSmall,
         .root_source_file = b.path("carts/blobs/src/blobs.zig"),

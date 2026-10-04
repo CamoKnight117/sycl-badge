@@ -98,7 +98,8 @@ const Pip = struct {
 };
 
 const Wall = struct {
-    color: red,
+    color_1: blue,
+    color_2: green,
     //Other types necessary for walls? Thickness? Sprite?
 };
 
@@ -204,15 +205,19 @@ fn increaseBodyLength(snake: *Snake) void {
     snake.body_len += 1;
 }
 
-fn reset_game() void {
+fn gameOverConditionMet() bool {
+    return false;
+}
+
+fn resetGame() void {
     snake_1.score = 0;
 }
 
-fn draw_ui() void {
+fn drawUi() void {
     cart.trace("ss:draw-l");
-    if (player.score > 0) {
+    if (snake_1.score > 0) {
         var text: [32]u8 = undefined;
-        const txt = std.fmt.bufPrintSentinel(&text, "{}", .{player.score}, 0) catch "-";
+        const txt = std.fmt.bufPrintSentinel(&text, "{}", .{snake_1.score}, 0) catch "-";
         cart.text(.{
             .str = txt,
             .x = @intCast((cart.screen_width - cart.font_width * txt.len) / 2),
@@ -222,7 +227,7 @@ fn draw_ui() void {
     }
 }
 
-fn draw_walls() void {
+fn drawWalls() void {
     cart.trace("ss:draw-w");
     //Top wall
     cart.rect(.{
@@ -230,8 +235,8 @@ fn draw_walls() void {
         .y = 0,
         .width = map_width * gridsquare_width,
         .height = gridsquare_width,
-        .stroke_color = green,
-        .fill_color = blue,
+        .stroke_color = rgb565(),
+        .fill_color = rgb565(blue),
     });
     //Bottom wall
     cart.rect(.{
@@ -239,8 +244,8 @@ fn draw_walls() void {
         .y = gridsquare_width * (map_height - 1),
         .width = map_width * gridsquare_width,
         .height = gridsquare_width,
-        .stroke_color = green,
-        .fill_color = blue,
+        .stroke_color = rgb565(green),
+        .fill_color = rgb565(blue),
     });
     //Left wall
     cart.rect(.{
@@ -248,8 +253,8 @@ fn draw_walls() void {
         .y = 0,
         .width = gridsquare_width,
         .height = map_height * gridsquare_width,
-        .stroke_color = green,
-        .fill_color = blue,
+        .stroke_color = rgb565(green),
+        .fill_color = rgb565(blue),
     });
     //Right wall
     cart.rect(.{
@@ -257,8 +262,8 @@ fn draw_walls() void {
         .y = 0,
         .width = gridsquare_width,
         .height = map_height * gridsquare_width,
-        .stroke_color = green,
-        .fill_color = blue,
+        .stroke_color = rgb565(green),
+        .fill_color = rgb565(blue),
     });
 }
 
@@ -279,14 +284,122 @@ const introText = &[_][]const u8{
 };
 const spacing = (cart.font_height * 4 / 3);
 
-fn draw_intro_text() void {
+fn drawIntroText() void {
     const y_start = (cart.screen_height - (cart.font_height + spacing * (introText.len - 1))) / 2;
     cart.text(.{
-        .str = line,
+        .str = 3,
         .x = @as(i32, @intCast((cart.screen_width - cart.font_width * line.len) / 2)) + shakex[i],
         .y = @as(i32, @intCast(y_start + spacing * i)) + shakey[i],
         .text_color = rgb565(zig),
     });
 }
 
-//CAM CONTINUE IMPLEMENTING FROM HERE
+var stateTick: u16 = 0;
+var pixelTick: u8 = 0;
+var quietMode: bool = false;
+var select_held_frames: u8 = 0; // Debounce: require SELECT held to reset from game
+
+// Diagnostic frame counter for crash-location tracing.
+// Every 30 frames we send "ss:F=NNN" via cart.trace() while in game mode.
+// draw_enemies() also sends a trace before each complex drawing operation
+// so the last [CART] message visible in the console before the crash/[PANIC]
+// pinpoints the crash location.
+var diag_frame: u32 = 0;
+
+pub fn update() void {
+    if (stateTick > 1000) stateTick = 100;
+    stateTick +%= 1;
+
+    if (stateTick % 10 == 0) pixelTick += 1;
+    if (pixelTick > 4) pixelTick = 0;
+
+    if (cart.controls.select and cart.controls.up) {
+        quietMode = false;
+    }
+    if (cart.controls.select and cart.controls.down) {
+        quietMode = true;
+    }
+    if (gameState == .intro) {
+        drawIntroText();
+
+        if (stateTick > 10 and cart.controls.start) {
+            gameState = .game;
+            stateTick = 0;
+        }
+
+        for (cart.neopixels, 0..) |*np, i| {
+            if (quietMode) {
+                np.* = if (pixelTick == i) blue else black;
+            } else {
+                np.* = if (pixelTick == i) blend(black, white, 0.05) else black;
+            }
+        }
+    } else if (gameState == .game_over) {
+        const gameOver = "GAME OVER";
+        if (rand_float() < 0.8) {
+            cart.text(.{
+                .str = gameOver,
+                .x = (cart.screen_width - gameOver.len * cart.font_width) / 2,
+                .y = (cart.screen_height - cart.font_height) / 2,
+                .text_color = rgb565(red),
+            });
+        }
+        if (stateTick > 10 and cart.controls.start) {
+            resetGame();
+            gameState = .intro;
+            stateTick = 0;
+        }
+        for (cart.neopixels) |*np| {
+            if (rand_float() > 0.8) {
+                np.* = black;
+            } else if (rand_float() > 0.8) {
+                np.* = red;
+            }
+        }
+    } else {
+        // SELECT+DOWN = intentional reset (avoids accidental resets from SELECT noise).
+        // SELECT alone no longer resets - was causing rapid resets to intro screen.
+        if (stateTick > 60 and cart.controls.select and cart.controls.down) {
+            select_held_frames +%= 1;
+        } else {
+            select_held_frames = 0;
+        }
+        if (select_held_frames >= 20) {
+            resetGame();
+            gameState = .intro;
+            stateTick = 0;
+            select_held_frames = 0;
+        }
+
+        // Periodic heartbeat every 30 frames (~0.5s at 60fps).
+        // If the crash happens DURING tick_game(), the last [CART] message
+        // will be "ss:tick".  If inside draw_enemies(), it will be "ss:draw-e",
+        // "ss:live", "ss:live-oval", or "ss:dying-oval".
+        diag_frame +%= 1;
+        if (diag_frame % 30 == 0) {
+            cart.trace("ss:tick");
+        }
+
+        tickGame();
+        if (gameOverConditionMet()) {
+            gameState = .game_over;
+            stateTick = 0;
+            return;
+        }
+        drawGame();
+    }
+
+    mixer.update();
+}
+
+fn tickGame() void {
+    cart.trace("ss:tg-snake");
+    tickSnake();
+}
+
+fn drawGame() void {
+    drawPips();
+    drawSnake();
+    drawUi();
+    drawWalls();
+}
