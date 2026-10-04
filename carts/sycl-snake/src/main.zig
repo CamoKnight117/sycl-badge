@@ -26,12 +26,13 @@ pub fn panic(msg: []const u8, _: ?*std.builtin.StackTrace, _: ?usize) noreturn {
 
 const black = defColor(0x000000);
 const white = defColor(0xffffff);
+const grey = defColor(0x777777);
 const red = defColor(0xf82828);
-const dred = defColor(0x3e0000);
+//const dred = defColor(0x3e0000);
 const green = defColor(0x00ff00);
 const dgreen = defColor(0x003c00);
 const blue = defColor(0x7777ff);
-const purp = defColor(0x820eef);
+//const purp = defColor(0x820eef);
 
 //fn borrowed from space-shooter cart
 inline fn defColor(rgb: u24) cart.NeopixelColor {
@@ -77,6 +78,13 @@ const Coordinate = struct {
     y: u8,
 };
 
+const Direction = enum {
+    up,
+    down,
+    left,
+    right,
+};
+
 const Vector = struct {
     origin: Coordinate,
     direction: Direction,
@@ -86,28 +94,22 @@ const Snake = struct {
     head_coord: Coordinate,
     body_len: u8,
     body_locations: [map_size]Vector, //map size is the max length a snake could ever be. Lets just allocate that much space for the body locations.
-    color_1: green,
-    color_2: dgreen,
+    color_1: cart.NeopixelColor,
+    color_2: cart.NeopixelColor,
     current_direction: Direction,
     score: u16,
 };
 
 const Pip = struct {
-    coord: Coordinate,
-    color: green,
+    color_1: cart.NeopixelColor = white,
+    color_2: cart.NeopixelColor = white,
+    size: u8 = 3,
 };
 
 const Wall = struct {
-    color_1: blue,
-    color_2: green,
+    color_1: cart.NeopixelColor = white,
+    color_2: cart.NeopixelColor = grey,
     //Other types necessary for walls? Thickness? Sprite?
-};
-
-const Direction = enum {
-    up,
-    down,
-    left,
-    right,
 };
 
 const MovementResult = enum {
@@ -117,25 +119,63 @@ const MovementResult = enum {
     err,
 };
 
-const map_width: u8 = 20; //map width in grid squares
-const map_height: u8 = 20; //map height in grid squares
+const MapLocationType = enum {
+    empty,
+    wall,
+    snake_head,
+    snake_body,
+    pip,
+};
+
+const map_width: u32 = 32; //map width in grid squares
+const map_height: u32 = 25; //map height in grid squares
 const map_size = map_width * map_height; //total grid squares
-const gridsquare_width = 5; //pixel width of grid squares
-const start_pips = 2;
-const max_pips = 10;
+const gridsquare_width: u32 = 5; //pixel width of grid squares
+// const start_pips = 2;
+// const max_pips = 10;
 var snake_1: Snake = undefined;
-var snake_2: Snake = undefined;
-var pips: [max_pips]Pip = undefined;
-var map_grid: [map_height][map_width]u8 = undefined;
+
+// var snake_2: Snake = undefined;
+// var pips: [max_pips]Pip = undefined;
+var map_grid: [map_width][map_height]MapLocationType = undefined;
+var wall: Wall = undefined;
+var pip: Pip = undefined;
 
 var mixer: cart.mixer.Mixer(.{}) = .{};
 
 pub fn start() void {
     rand = std.Random.DefaultPrng.init(5831);
 
-    snake_1 = .{ .head_x = 0, .head_y = 0, .body_len = 3, .body_locations = .{
-        .{},
-    } };
+    const start_segment_1 = Vector{
+        .origin = Coordinate{ .x = 25, .y = 25 },
+        .direction = Direction.up,
+    };
+    const start_segment_2 = Vector{
+        .origin = Coordinate{ .x = 25, .y = 30 },
+        .direction = Direction.up,
+    };
+    const start_segment_3 = Vector{
+        .origin = Coordinate{ .x = 25, .y = 35 },
+        .direction = Direction.up,
+    };
+
+    snake_1 = .{
+        .head_coord = .{ .x = 25, .y = 25 },
+        .body_len = 3,
+        .body_locations = .{ start_segment_1, start_segment_2, start_segment_3 } ++
+            @as([map_size - 3]Vector, undefined),
+        .color_1 = green,
+        .color_2 = dgreen,
+        .current_direction = .up,
+        .score = 0,
+    };
+
+    map_grid = std.mem.zeroes([map_width][map_height]MapLocationType);
+    addWallsToMap();
+    addStartingPipsToMap();
+
+    wall = .{};
+    pip = .{};
 
     // Enable vsync but tune the framerate to be as fast as possible for the app timing
     cart.set_vsync_dynamic();
@@ -146,11 +186,28 @@ pub fn start() void {
     mixer.start_audio();
 }
 
-fn spawnPip() void {}
+fn addWallsToMap() void {
+    for (0..map_width) |x| {
+        map_grid[x][0] = MapLocationType.wall;
+        map_grid[x][map_height - 1] = MapLocationType.wall;
+    }
+    for (0..map_height) |y| {
+        map_grid[0][y] = MapLocationType.wall;
+        map_grid[map_width - 1][y] = MapLocationType.wall;
+    }
+}
 
-fn tickPips() void {}
+fn addStartingPipsToMap() void {
+    map_grid[4][17] = MapLocationType.pip;
+    map_grid[19][7] = MapLocationType.pip;
+    map_grid[22][20] = MapLocationType.pip;
+}
 
-fn drawPips() void {}
+// fn spawnPip() void {}
+
+// fn tickPips() void {}
+
+// fn drawPips() void {}
 
 fn tickSnake() void {
     if (cart.controls.up) {
@@ -178,16 +235,21 @@ fn tickSnake() void {
 
 fn drawSnake() void {
     cart.trace("ss:draw-p");
-    for (snake_1.body_locations) |body_segment| {
-        cart.oval(.{
-            .x = body_segment.origin.x,
-            .y = body_segment.origin.y,
-            .width = 3,
-            .height = 3,
-            .stroke_color = rgb565(snake_1.color_1),
-            .fill_color = rgb565(snake_1.color_2),
-        });
+    for (0..snake_1.body_len) |index| {
+        const body_segment = snake_1.body_locations[index];
+        drawSnakeSegment(body_segment.origin.x, body_segment.origin.y);
     }
+}
+
+fn drawSnakeSegment(x: i32, y: i32) void {
+    cart.rect(.{
+        .x = x,
+        .y = y,
+        .width = gridsquare_width,
+        .height = gridsquare_width,
+        .stroke_color = rgb565(snake_1.color_2),
+        .fill_color = rgb565(snake_1.color_1),
+    });
 }
 
 fn MoveSnake(snake: Snake, direction: Direction) MovementResult {
@@ -195,75 +257,93 @@ fn MoveSnake(snake: Snake, direction: Direction) MovementResult {
     _ = direction;
 }
 
-fn collectedPip(snake: *Snake) void {
-    snake.score += 1;
-    increaseBodyLength(snake);
-    spawnPip(); //Should just reuse the pip we just collected...
-}
+// fn collectedPip(snake: *Snake) void {
+//     snake.score += 1;
+//     increaseBodyLength(snake);
+//     spawnPip(); //Should just reuse the pip we just collected...
+// }
 
-fn increaseBodyLength(snake: *Snake) void {
-    snake.body_len += 1;
-}
+// fn increaseBodyLength(snake: *Snake) void {
+//     snake.body_len += 1;
+// }
 
 fn gameOverConditionMet() bool {
     return false;
 }
 
-fn resetGame() void {
-    snake_1.score = 0;
-}
+// fn resetGame() void {
+//     snake_1.score = 0;
+// }
 
-fn drawUi() void {
-    cart.trace("ss:draw-l");
-    if (snake_1.score > 0) {
-        var text: [32]u8 = undefined;
-        const txt = std.fmt.bufPrintSentinel(&text, "{}", .{snake_1.score}, 0) catch "-";
-        cart.text(.{
-            .str = txt,
-            .x = @intCast((cart.screen_width - cart.font_width * txt.len) / 2),
-            .y = 4,
-            .text_color = rgb565(white),
-        });
+// fn drawUi() void {
+//     cart.trace("ss:draw-l");
+//     if (snake_1.score > 0) {
+//         var text: [32]u8 = undefined;
+//         const txt = std.fmt.bufPrintSentinel(&text, "{}", .{snake_1.score}, 0) catch "-";
+//         cart.text(.{
+//             .str = txt,
+//             .x = @intCast((cart.screen_width - cart.font_width * txt.len) / 2),
+//             .y = 4,
+//             .text_color = rgb565(white),
+//         });
+//     }
+// }
+
+fn drawMap() void {
+    cart.trace("ss:draw-w");
+    for (0..map_width) |x| {
+        for (0..map_height) |y| {
+            const currentLocation = map_grid[x][y];
+            if (map_grid[x][y] == MapLocationType.wall) {
+                drawWallSegment(@as(i32, @intCast(x)) * gridsquare_width, @as(i32, @intCast(y)) * gridsquare_width);
+            }
+            switch (currentLocation) {
+                .wall => {
+                    drawWallSegment(@as(i32, @intCast(x)) * gridsquare_width, @as(i32, @intCast(y)) * gridsquare_width);
+                },
+                .empty => {
+                    drawEmptySquare(@as(i32, @intCast(x)), @as(i32, @intCast(y)));
+                },
+                .snake_body => {},
+                .snake_head => {},
+                .pip => {
+                    drawPip(@as(i32, @intCast(x)), @as(i32, @intCast(y)));
+                },
+            }
+        }
     }
 }
 
-fn drawWalls() void {
-    cart.trace("ss:draw-w");
-    //Top wall
+fn drawWallSegment(x: i32, y: i32) void {
     cart.rect(.{
-        .x = 0,
-        .y = 0,
-        .width = map_width * gridsquare_width,
-        .height = gridsquare_width,
-        .stroke_color = rgb565(),
-        .fill_color = rgb565(blue),
-    });
-    //Bottom wall
-    cart.rect(.{
-        .x = 0,
-        .y = gridsquare_width * (map_height - 1),
-        .width = map_width * gridsquare_width,
-        .height = gridsquare_width,
-        .stroke_color = rgb565(green),
-        .fill_color = rgb565(blue),
-    });
-    //Left wall
-    cart.rect(.{
-        .x = 0,
-        .y = 0,
+        .x = x,
+        .y = y,
         .width = gridsquare_width,
-        .height = map_height * gridsquare_width,
-        .stroke_color = rgb565(green),
-        .fill_color = rgb565(blue),
+        .height = gridsquare_width,
+        .stroke_color = rgb565(wall.color_1),
+        .fill_color = rgb565(wall.color_2),
     });
-    //Right wall
+}
+
+fn drawEmptySquare(x: i32, y: i32) void {
     cart.rect(.{
-        .x = gridsquare_width * (map_width - 1),
-        .y = 0,
-        .width = gridsquare_width,
-        .height = map_height * gridsquare_width,
-        .stroke_color = rgb565(green),
-        .fill_color = rgb565(blue),
+        .x = x * gridsquare_width + gridsquare_width / 2,
+        .y = y * gridsquare_width + gridsquare_width / 2,
+        .width = 1,
+        .height = 1,
+        .stroke_color = rgb565(white),
+        .fill_color = rgb565(white),
+    });
+}
+
+fn drawPip(x: i32, y: i32) void {
+    cart.rect(.{
+        .x = x * gridsquare_width + gridsquare_width / 2 - 1,
+        .y = y * gridsquare_width + gridsquare_width / 2 - 1,
+        .width = pip.size,
+        .height = pip.size,
+        .stroke_color = rgb565(pip.color_2),
+        .fill_color = rgb565(pip.color_1),
     });
 }
 
@@ -301,11 +381,11 @@ var pixelTick: u8 = 0;
 var quietMode: bool = false;
 var select_held_frames: u8 = 0; // Debounce: require SELECT held to reset from game
 
-// Diagnostic frame counter for crash-location tracing.
-// Every 30 frames we send "ss:F=NNN" via cart.trace() while in game mode.
-// draw_enemies() also sends a trace before each complex drawing operation
-// so the last [CART] message visible in the console before the crash/[PANIC]
-// pinpoints the crash location.
+// // Diagnostic frame counter for crash-location tracing.
+// // Every 30 frames we send "ss:F=NNN" via cart.trace() while in game mode.
+// // draw_enemies() also sends a trace before each complex drawing operation
+// // so the last [CART] message visible in the console before the crash/[PANIC]
+// // pinpoints the crash location.
 var diag_frame: u32 = 0;
 
 pub fn update() void {
@@ -347,7 +427,7 @@ pub fn update() void {
             });
         }
         if (stateTick > 10 and cart.controls.start) {
-            resetGame();
+            // resetGame();
             gameState = .intro;
             stateTick = 0;
         }
@@ -367,7 +447,7 @@ pub fn update() void {
             select_held_frames = 0;
         }
         if (select_held_frames >= 20) {
-            resetGame();
+            //resetGame();
             gameState = .intro;
             stateTick = 0;
             select_held_frames = 0;
@@ -396,12 +476,11 @@ pub fn update() void {
 
 fn tickGame() void {
     cart.trace("ss:tg-snake");
-    tickSnake();
+    //tickSnake();
 }
 
 fn drawGame() void {
-    drawPips();
     drawSnake();
-    drawUi();
-    drawWalls();
+    //drawUi();
+    drawMap();
 }
