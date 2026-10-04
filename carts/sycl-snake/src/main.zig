@@ -286,12 +286,14 @@ const spacing = (cart.font_height * 4 / 3);
 
 fn drawIntroText() void {
     const y_start = (cart.screen_height - (cart.font_height + spacing * (introText.len - 1))) / 2;
-    cart.text(.{
-        .str = 3,
-        .x = @as(i32, @intCast((cart.screen_width - cart.font_width * line.len) / 2)) + shakex[i],
-        .y = @as(i32, @intCast(y_start + spacing * i)) + shakey[i],
-        .text_color = rgb565(zig),
-    });
+    for (introText, 0..) |line, i| {
+        cart.text(.{
+            .str = line,
+            .x = @as(i32, @intCast((cart.screen_width - cart.font_width * line.len) / 2)),
+            .y = @as(i32, @intCast(y_start + spacing * i)),
+            .text_color = rgb565(white),
+        });
+    }
 }
 
 var stateTick: u16 = 0;
