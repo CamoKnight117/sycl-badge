@@ -92,10 +92,11 @@ const Vector = struct {
 
 const Snake = struct {
     head_coord: Coordinate,
+    tail_coord: Coordinate,
     body_len: u8,
-    body_locations: [map_size]Vector, //map size is the max length a snake could ever be. Lets just allocate that much space for the body locations.
     color_1: cart.NeopixelColor,
     color_2: cart.NeopixelColor,
+    color_eyes: cart.NeopixelColor,
     current_direction: Direction,
     score: u16,
 };
@@ -123,7 +124,10 @@ const MapLocationType = enum {
     empty,
     wall,
     snake_head,
-    snake_body,
+    snake_body_up,
+    snake_body_down,
+    snake_body_left,
+    snake_body_right,
     pip,
 };
 
@@ -146,33 +150,21 @@ var mixer: cart.mixer.Mixer(.{}) = .{};
 pub fn start() void {
     rand = std.Random.DefaultPrng.init(5831);
 
-    const start_segment_1 = Vector{
-        .origin = Coordinate{ .x = 25, .y = 25 },
-        .direction = Direction.up,
-    };
-    const start_segment_2 = Vector{
-        .origin = Coordinate{ .x = 25, .y = 30 },
-        .direction = Direction.up,
-    };
-    const start_segment_3 = Vector{
-        .origin = Coordinate{ .x = 25, .y = 35 },
-        .direction = Direction.up,
-    };
-
-    snake_1 = .{
-        .head_coord = .{ .x = 25, .y = 25 },
-        .body_len = 3,
-        .body_locations = .{ start_segment_1, start_segment_2, start_segment_3 } ++
-            @as([map_size - 3]Vector, undefined),
-        .color_1 = green,
-        .color_2 = dgreen,
-        .current_direction = .up,
-        .score = 0,
-    };
-
     map_grid = std.mem.zeroes([map_width][map_height]MapLocationType);
     addWallsToMap();
     addStartingPipsToMap();
+
+    snake_1 = .{
+        .head_coord = .{ .x = 16, .y = 12 },
+        .tail_coord = .{ .x = 16, .y = 14 },
+        .body_len = 3,
+        .color_1 = green,
+        .color_2 = dgreen,
+        .color_eyes = red,
+        .current_direction = .up,
+        .score = 0,
+    };
+    addSnakeToMap();
 
     wall = .{};
     pip = .{};
@@ -203,12 +195,53 @@ fn addStartingPipsToMap() void {
     map_grid[22][20] = MapLocationType.pip;
 }
 
-// fn spawnPip() void {}
+fn addSnakeToMap() void {
+    switch (snake_1.current_direction) {
+        .up => {
+            for (0..snake_1.body_len) |index| {
+                if (index == 0)
+                    map_grid[snake_1.head_coord.x][snake_1.head_coord.y + index] = MapLocationType.snake_head;
+                if (index != 0)
+                    map_grid[snake_1.head_coord.x][snake_1.head_coord.y + index] = MapLocationType.snake_body_up;
+            }
+            snake_1.tail_coord.x = snake_1.head_coord.x;
+            snake_1.tail_coord.y = snake_1.head_coord.y + snake_1.body_len - 1;
+        },
+        .down => {
+            for (0..snake_1.body_len) |index| {
+                if (index == 0)
+                    map_grid[snake_1.head_coord.x][snake_1.head_coord.y - index] = MapLocationType.snake_head;
+                if (index != 0)
+                    map_grid[snake_1.head_coord.x][snake_1.head_coord.y - index] = MapLocationType.snake_body_down;
+            }
+            snake_1.tail_coord.x = snake_1.head_coord.x;
+            snake_1.tail_coord.y = snake_1.head_coord.y - snake_1.body_len + 1;
+        },
+        .left => {
+            for (0..snake_1.body_len) |index| {
+                if (index == 0)
+                    map_grid[snake_1.head_coord.x + index][snake_1.head_coord.y] = MapLocationType.snake_head;
+                if (index != 0)
+                    map_grid[snake_1.head_coord.x + index][snake_1.head_coord.y] = MapLocationType.snake_body_left;
+            }
+            snake_1.tail_coord.x = snake_1.head_coord.x + snake_1.body_len - 1;
+            snake_1.tail_coord.y = snake_1.head_coord.y + snake_1.body_len;
+        },
+        .right => {
+            for (0..snake_1.body_len) |index| {
+                if (index == 0)
+                    map_grid[snake_1.head_coord.x - index][snake_1.head_coord.y] = MapLocationType.snake_head;
+                if (index != 0)
+                    map_grid[snake_1.head_coord.x - index][snake_1.head_coord.y] = MapLocationType.snake_body_right;
+            }
+            snake_1.tail_coord.x = snake_1.head_coord.x - snake_1.body_len + 1;
+            snake_1.tail_coord.y = snake_1.head_coord.y + snake_1.body_len;
+        },
+    }
+}
 
-// fn tickPips() void {}
-
-// fn drawPips() void {}
-
+var movementTick: u8 = 0;
+var movementTickMax: u8 = 20;
 fn tickSnake() void {
     if (cart.controls.up) {
         snake_1.current_direction = .up;
@@ -222,29 +255,49 @@ fn tickSnake() void {
     if (cart.controls.right) {
         snake_1.current_direction = .right;
     }
+    movementTick += snake_1.body_len % 10 + 1;
 
-    const moveResult = MoveSnake(snake_1, snake_1.current_direction);
-
-    switch (moveResult) {
-        .collision => {},
-        .collected_pip => {},
-        .normal => {},
-        .err => {},
+    if (movementTick > movementTickMax) {
+        movementTick = 0;
+        const moveResult = MoveSnake(snake_1.current_direction);
+        switch (moveResult) {
+            .collision => {gameState = GameState},
+            .collected_pip => {},
+            .normal => {},
+            .err => {},
+        }
     }
 }
 
-fn drawSnake() void {
-    cart.trace("ss:draw-p");
-    for (0..snake_1.body_len) |index| {
-        const body_segment = snake_1.body_locations[index];
-        drawSnakeSegment(body_segment.origin.x, body_segment.origin.y);
+var prng = std.Random.DefaultPrng.init(6428);
+const newRand = prng.random();
+fn spawnPip() void {
+    var spawned: bool = false;
+    while (!spawned) {
+        const randX = newRand.intRangeAtMost(u8, 1, map_width - 1);
+        const randY = newRand.intRangeAtMost(u8, 1, map_height - 1);
+        const locationType: MapLocationType = map_grid[randX][randY];
+        if (locationType == MapLocationType.empty) {
+            map_grid[randX][randY] = MapLocationType.pip;
+            spawned = true;
+        }
+    }
+}
+
+var pipTick: u16 = 0;
+var pipMax: u8 = 200;
+fn tickPips() void {
+    pipTick += 1;
+    if (pipTick > pipMax) {
+        pipTick = 0;
+        spawnPip();
     }
 }
 
 fn drawSnakeSegment(x: i32, y: i32) void {
     cart.rect(.{
-        .x = x,
-        .y = y,
+        .x = x * gridsquare_width,
+        .y = y * gridsquare_width,
         .width = gridsquare_width,
         .height = gridsquare_width,
         .stroke_color = rgb565(snake_1.color_2),
@@ -252,20 +305,157 @@ fn drawSnakeSegment(x: i32, y: i32) void {
     });
 }
 
-fn MoveSnake(snake: Snake, direction: Direction) MovementResult {
-    _ = snake;
-    _ = direction;
+fn drawSnakeHead(x: i32, y: i32) void {
+    drawSnakeSegment(x, y);
+    switch (snake_1.current_direction) {
+        .up => {
+            cart.rect(.{
+                .x = x * gridsquare_width + 1,
+                .y = y * gridsquare_width + 1,
+                .width = 1,
+                .height = 1,
+                .stroke_color = rgb565(snake_1.color_eyes),
+                .fill_color = rgb565(snake_1.color_eyes),
+            });
+            cart.rect(.{
+                .x = x * gridsquare_width + gridsquare_width - 2,
+                .y = y * gridsquare_width + 1,
+                .width = 1,
+                .height = 1,
+                .stroke_color = rgb565(snake_1.color_eyes),
+                .fill_color = rgb565(snake_1.color_eyes),
+            });
+        },
+        .down => {
+            cart.rect(.{
+                .x = x * gridsquare_width + gridsquare_width - 2,
+                .y = y * gridsquare_width + gridsquare_width - 2,
+                .width = 1,
+                .height = 1,
+                .stroke_color = rgb565(snake_1.color_eyes),
+                .fill_color = rgb565(snake_1.color_eyes),
+            });
+            cart.rect(.{
+                .x = x * gridsquare_width + 1,
+                .y = y * gridsquare_width + gridsquare_width - 2,
+                .width = 1,
+                .height = 1,
+                .stroke_color = rgb565(snake_1.color_eyes),
+                .fill_color = rgb565(snake_1.color_eyes),
+            });
+        },
+        .left => {
+            cart.rect(.{
+                .x = x * gridsquare_width + 1,
+                .y = y * gridsquare_width + gridsquare_width - 2,
+                .width = 1,
+                .height = 1,
+                .stroke_color = rgb565(snake_1.color_eyes),
+                .fill_color = rgb565(snake_1.color_eyes),
+            });
+            cart.rect(.{
+                .x = x * gridsquare_width + 1,
+                .y = y * gridsquare_width + 1,
+                .width = 1,
+                .height = 1,
+                .stroke_color = rgb565(snake_1.color_eyes),
+                .fill_color = rgb565(snake_1.color_eyes),
+            });
+        },
+        .right => {
+            cart.rect(.{
+                .x = x * gridsquare_width + gridsquare_width - 2,
+                .y = y * gridsquare_width + 1,
+                .width = 1,
+                .height = 1,
+                .stroke_color = rgb565(snake_1.color_eyes),
+                .fill_color = rgb565(snake_1.color_eyes),
+            });
+            cart.rect(.{
+                .x = x * gridsquare_width + gridsquare_width - 2,
+                .y = y * gridsquare_width + gridsquare_width - 2,
+                .width = 1,
+                .height = 1,
+                .stroke_color = rgb565(snake_1.color_eyes),
+                .fill_color = rgb565(snake_1.color_eyes),
+            });
+        },
+    }
 }
 
-// fn collectedPip(snake: *Snake) void {
-//     snake.score += 1;
-//     increaseBodyLength(snake);
-//     spawnPip(); //Should just reuse the pip we just collected...
-// }
+fn MoveSnake(direction: Direction) MovementResult {
+    //Check spot in front of snake
+    //Replace the head with a direction body segment
+    var spot_ahead_type: MapLocationType = undefined;
+    var spot_ahead_coord: Coordinate = snake_1.head_coord;
+    switch (direction) {
+        .up => {
+            spot_ahead_coord.y -= 1;
+            map_grid[snake_1.head_coord.x][snake_1.head_coord.y] = MapLocationType.snake_body_up;
+        },
+        .down => {
+            spot_ahead_coord.y += 1;
+            map_grid[snake_1.head_coord.x][snake_1.head_coord.y] = MapLocationType.snake_body_down;
+        },
+        .left => {
+            spot_ahead_coord.x -= 1;
+            map_grid[snake_1.head_coord.x][snake_1.head_coord.y] = MapLocationType.snake_body_left;
+        },
+        .right => {
+            spot_ahead_coord.x += 1;
+            map_grid[snake_1.head_coord.x][snake_1.head_coord.y] = MapLocationType.snake_body_right;
+        },
+    }
+    //Save what is in front of the snake
+    spot_ahead_type = map_grid[spot_ahead_coord.x][spot_ahead_coord.y];
+    var future_ret_val: MovementResult = MovementResult.normal;
+    switch (spot_ahead_type) {
+        .wall, .snake_body_down, .snake_body_left, .snake_body_right, .snake_body_up, .snake_head => {
+            return MovementResult.collision;
+        },
+        .pip => {
+            future_ret_val = .collected_pip;
+            collectedPip();
+        },
+        .empty => {
+            future_ret_val = .normal;
+        },
+    }
 
-// fn increaseBodyLength(snake: *Snake) void {
-//     snake.body_len += 1;
-// }
+    if (future_ret_val != .collected_pip) {
+        //Replace tail with empty grid
+        const tail_type = map_grid[snake_1.tail_coord.x][snake_1.tail_coord.y];
+        map_grid[snake_1.tail_coord.x][snake_1.tail_coord.y] = MapLocationType.empty;
+        switch (tail_type) {
+            .snake_body_up => {
+                snake_1.tail_coord.y -= 1;
+            },
+            .snake_body_down => {
+                snake_1.tail_coord.y += 1;
+            },
+            .snake_body_left => {
+                snake_1.tail_coord.x -= 1;
+            },
+            .snake_body_right => {
+                snake_1.tail_coord.x += 1;
+            },
+            .empty, .snake_head, .pip, .wall => {},
+        }
+    }
+
+    //Add head to spot in front
+    map_grid[spot_ahead_coord.x][spot_ahead_coord.y] = MapLocationType.snake_head;
+    snake_1.head_coord.x = spot_ahead_coord.x;
+    snake_1.head_coord.y = spot_ahead_coord.y;
+
+    return future_ret_val;
+}
+
+fn collectedPip() void {
+    snake_1.score += 1;
+    snake_1.body_len += 1;
+    spawnPip();
+}
 
 fn gameOverConditionMet() bool {
     return false;
@@ -304,8 +494,12 @@ fn drawMap() void {
                 .empty => {
                     drawEmptySquare(@as(i32, @intCast(x)), @as(i32, @intCast(y)));
                 },
-                .snake_body => {},
-                .snake_head => {},
+                .snake_body_down, .snake_body_left, .snake_body_right, .snake_body_up => {
+                    drawSnakeSegment(@as(i32, @intCast(x)), @as(i32, @intCast(y)));
+                },
+                .snake_head => {
+                    drawSnakeHead(@as(i32, @intCast(x)), @as(i32, @intCast(y)));
+                },
                 .pip => {
                     drawPip(@as(i32, @intCast(x)), @as(i32, @intCast(y)));
                 },
@@ -376,6 +570,23 @@ fn drawIntroText() void {
     }
 }
 
+const bannerText = "SYCL 2026";
+const bannerWidth = cart.font_width * bannerText.len;
+var bannerPos: f32 = cart.screen_width / 2;
+
+fn drawBanner() void {
+    cart.trace("ss:draw-bn");
+    cart.text(.{
+        .str = bannerText,
+        .x = @intFromFloat(bannerPos),
+        .y = cart.screen_height - 24,
+        .text_color = rgb565(grey),
+    });
+    bannerPos -= 0.233;
+    if (bannerPos < -@as(f32, @floatFromInt(bannerWidth)))
+        bannerPos = cart.screen_width;
+}
+
 var stateTick: u16 = 0;
 var pixelTick: u8 = 0;
 var quietMode: bool = false;
@@ -401,6 +612,7 @@ pub fn update() void {
     if (cart.controls.select and cart.controls.down) {
         quietMode = true;
     }
+
     if (gameState == .intro) {
         drawIntroText();
 
@@ -476,11 +688,11 @@ pub fn update() void {
 
 fn tickGame() void {
     cart.trace("ss:tg-snake");
-    //tickSnake();
+    tickSnake();
+    tickPips();
 }
 
 fn drawGame() void {
-    drawSnake();
-    //drawUi();
     drawMap();
+    drawBanner();
 }
