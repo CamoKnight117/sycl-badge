@@ -256,7 +256,7 @@ fn tickSnake() void {
     if (cart.controls.right and snake_1.current_direction != .left) {
         snake_1.current_direction = .right;
     }
-    movementTick += (snake_1.body_len / 10) + 3;
+    movementTick += @min((snake_1.body_len / 10) + 3, 5);
 
     if (movementTick > movementTickMax) {
         movementTick = 0;
