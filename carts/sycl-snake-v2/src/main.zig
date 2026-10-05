@@ -827,7 +827,7 @@ fn playCollectedPipTone() void {
         multitones_buf[multitones_count] = .{
             .loop = false,
             .tones = &collected_pip_tones_with_speedup,
-            .volume = 10,
+            .volume = 50,
             .flags = .{
                 .channel = .pulse1,
             },
@@ -836,7 +836,7 @@ fn playCollectedPipTone() void {
         multitones_buf[multitones_count] = .{
             .loop = false,
             .tones = &collected_pip_tones,
-            .volume = 10,
+            .volume = 50,
             .flags = .{
                 .channel = .pulse1,
             },
@@ -853,7 +853,7 @@ fn playMenuHappySong() void {
     multitones_buf[multitones_count] = .{
         .loop = false,
         .tones = &menu_happy_song,
-        .volume = 10,
+        .volume = 50,
         .flags = .{
             .channel = .pulse1,
         },
@@ -868,7 +868,7 @@ fn playGameOverSadSong() void {
     multitones_buf[multitones_count] = .{
         .loop = false,
         .tones = &game_over_sad_song,
-        .volume = 10,
+        .volume = 50,
         .flags = .{
             .channel = .pulse1,
         },
