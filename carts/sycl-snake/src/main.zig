@@ -255,13 +255,15 @@ fn tickSnake() void {
     if (cart.controls.right) {
         snake_1.current_direction = .right;
     }
-    movementTick += snake_1.body_len % 10 + 1;
+    movementTick += (snake_1.body_len / 10) + 1;
 
     if (movementTick > movementTickMax) {
         movementTick = 0;
         const moveResult = MoveSnake(snake_1.current_direction);
         switch (moveResult) {
-            .collision => {gameState = GameState},
+            .collision => {
+                gameState = GameState.game_over;
+            },
             .collected_pip => {},
             .normal => {},
             .err => {},
@@ -457,27 +459,52 @@ fn collectedPip() void {
     spawnPip();
 }
 
-fn gameOverConditionMet() bool {
-    return false;
+fn resetGame() void {
+    snake_1.score = 0;
+    map_grid = std.mem.zeroes([map_width][map_height]MapLocationType);
+    addWallsToMap();
+    addStartingPipsToMap();
+
+    snake_1 = .{
+        .head_coord = .{ .x = 16, .y = 12 },
+        .tail_coord = .{ .x = 16, .y = 14 },
+        .body_len = 3,
+        .color_1 = green,
+        .color_2 = dgreen,
+        .color_eyes = red,
+        .current_direction = .up,
+        .score = 0,
+    };
+    addSnakeToMap();
 }
 
-// fn resetGame() void {
-//     snake_1.score = 0;
-// }
+fn drawUi() void {
+    cart.trace("ss:draw-l");
+    if (snake_1.score > 0) {
+        var text: [32]u8 = undefined;
+        const txt = std.fmt.bufPrintSentinel(&text, "{}", .{snake_1.score}, 0) catch "-";
+        cart.text(.{
+            .str = txt,
+            .x = @intCast((cart.screen_width - cart.font_width * txt.len) / 2),
+            .y = 10,
+            .text_color = rgb565(grey),
+        });
+    }
+}
 
-// fn drawUi() void {
-//     cart.trace("ss:draw-l");
-//     if (snake_1.score > 0) {
-//         var text: [32]u8 = undefined;
-//         const txt = std.fmt.bufPrintSentinel(&text, "{}", .{snake_1.score}, 0) catch "-";
-//         cart.text(.{
-//             .str = txt,
-//             .x = @intCast((cart.screen_width - cart.font_width * txt.len) / 2),
-//             .y = 4,
-//             .text_color = rgb565(white),
-//         });
-//     }
-// }
+fn drawUiGameEnd() void {
+    cart.trace("ss:draw-l");
+    if (snake_1.score > 0) {
+        var text: [32]u8 = undefined;
+        const txt = std.fmt.bufPrintSentinel(&text, "Score: {}", .{snake_1.score}, 0) catch "-";
+        cart.text(.{
+            .str = txt,
+            .x = @intCast((cart.screen_width - cart.font_width * txt.len) / 2),
+            .y = 80,
+            .text_color = rgb565(grey),
+        });
+    }
+}
 
 fn drawMap() void {
     cart.trace("ss:draw-w");
@@ -639,7 +666,7 @@ pub fn update() void {
             });
         }
         if (stateTick > 10 and cart.controls.start) {
-            // resetGame();
+            resetGame();
             gameState = .intro;
             stateTick = 0;
         }
@@ -650,6 +677,7 @@ pub fn update() void {
                 np.* = red;
             }
         }
+        drawUiGameEnd();
     } else {
         // SELECT+DOWN = intentional reset (avoids accidental resets from SELECT noise).
         // SELECT alone no longer resets - was causing rapid resets to intro screen.
@@ -659,7 +687,7 @@ pub fn update() void {
             select_held_frames = 0;
         }
         if (select_held_frames >= 20) {
-            //resetGame();
+            resetGame();
             gameState = .intro;
             stateTick = 0;
             select_held_frames = 0;
@@ -675,11 +703,11 @@ pub fn update() void {
         }
 
         tickGame();
-        if (gameOverConditionMet()) {
-            gameState = .game_over;
-            stateTick = 0;
-            return;
-        }
+        // if (gameOverConditionMet()) {
+        //     gameState = .game_over;
+        //     stateTick = 0;
+        //     return;
+        // }
         drawGame();
     }
 
@@ -695,4 +723,5 @@ fn tickGame() void {
 fn drawGame() void {
     drawMap();
     drawBanner();
+    drawUi();
 }
