@@ -163,7 +163,7 @@ pub fn start() void {
         .color_2 = dgreen,
         .color_eyes = red,
         .current_direction = .up,
-        .score = 0,
+        .score = 3,
     };
     addSnakeToMap();
 
@@ -177,6 +177,8 @@ pub fn start() void {
     cart.set_double_buffer_mode(.{ .clear_full_frame = rgb565(black) });
 
     mixer.start_audio();
+
+    playMenuHappySong();
 }
 
 fn addWallsToMap() void {
@@ -264,8 +266,11 @@ fn tickSnake() void {
         switch (moveResult) {
             .collision => {
                 gameState = GameState.game_over;
+                playGameOverSadSong();
             },
-            .collected_pip => {},
+            .collected_pip => {
+                playCollectedPipTone();
+            },
             .normal => {},
             .err => {},
         }
@@ -462,7 +467,6 @@ fn collectedPip() void {
 }
 
 fn resetGame() void {
-    snake_1.score = 0;
     map_grid = std.mem.zeroes([map_width][map_height]MapLocationType);
     addWallsToMap();
     addStartingPipsToMap();
@@ -475,7 +479,7 @@ fn resetGame() void {
         .color_2 = dgreen,
         .color_eyes = red,
         .current_direction = .up,
-        .score = 0,
+        .score = 3,
     };
     addSnakeToMap();
 }
@@ -712,7 +716,7 @@ pub fn update() void {
         // }
         drawGame();
     }
-
+    tickMultitones();
     mixer.update();
 }
 
@@ -726,4 +730,185 @@ fn drawGame() void {
     drawMap();
     drawBanner();
     drawUi();
+}
+
+// - AUDIO - //
+
+//Chromatic scale for ease of song writing.
+const g3: u32 = 196;
+const a3b: u32 = 208;
+const a3: u32 = 220;
+const b3b: u32 = 234;
+const b3: u32 = 247;
+const c4: u32 = 262;
+const d4b: u32 = 278;
+const d4: u32 = 294;
+const e4b: u32 = 312;
+const e4: u32 = 330;
+const f4: u32 = 349;
+const g4b: u32 = 370;
+const g4: u32 = 392;
+const a4: u32 = 440;
+const b4: u32 = 494;
+const c5: u32 = 523;
+const d5: u32 = 587;
+const e5: u32 = 659;
+
+var multitones_buf: [20]MultiTone = undefined;
+var multitones_count: usize = 0;
+
+const MultiTone = struct {
+    loop: bool,
+    tones: []const Tone,
+    volume: u32,
+    flags: cart.mixer.ToneOptions.Flags,
+    current_tone: usize = 0,
+    current_tone_frame: u32 = 0,
+};
+
+pub const Tone = struct {
+    frequency: u32,
+    duration: u32,
+};
+
+const collected_pip_tones = [_]Tone{
+    .{ .frequency = c4, .duration = 3 },
+    .{ .frequency = g4, .duration = 3 },
+    .{ .frequency = c5, .duration = 3 },
+};
+
+const collected_pip_tones_with_speedup = [_]Tone{
+    .{ .frequency = c4, .duration = 3 },
+    .{ .frequency = g4, .duration = 3 },
+    .{ .frequency = c5, .duration = 3 },
+    .{ .frequency = c4, .duration = 3 },
+    .{ .frequency = c5, .duration = 3 },
+    .{ .frequency = c4, .duration = 3 },
+    .{ .frequency = c5, .duration = 3 },
+};
+
+const menu_happy_song = [_]Tone{
+    .{ .frequency = 0, .duration = 48 },
+    .{ .frequency = g4, .duration = 8 },
+    .{ .frequency = c4, .duration = 12 },
+    .{ .frequency = g4, .duration = 8 },
+    .{ .frequency = e4, .duration = 12 },
+    .{ .frequency = g4, .duration = 8 },
+    .{ .frequency = c4, .duration = 12 },
+    .{ .frequency = g4, .duration = 8 },
+    .{ .frequency = e4, .duration = 12 },
+    .{ .frequency = d4, .duration = 12 },
+    .{ .frequency = c4, .duration = 12 },
+    .{ .frequency = e4, .duration = 8 },
+    .{ .frequency = g4, .duration = 8 },
+    .{ .frequency = c5, .duration = 8 },
+};
+
+const game_over_sad_song = [_]Tone{
+    .{ .frequency = 0, .duration = 48 },
+    .{ .frequency = g3, .duration = 12 },
+    .{ .frequency = c4, .duration = 12 },
+    .{ .frequency = g3, .duration = 12 },
+    .{ .frequency = e4b, .duration = 12 },
+    .{ .frequency = g3, .duration = 12 },
+    .{ .frequency = c4, .duration = 12 },
+    .{ .frequency = g3, .duration = 12 },
+    .{ .frequency = b3, .duration = 12 },
+    .{ .frequency = g3, .duration = 12 },
+    .{ .frequency = c4, .duration = 24 },
+};
+
+fn playCollectedPipTone() void {
+    if (multitones_count == multitones_buf.len) {
+        return;
+    }
+
+    if (snake_1.score % 10 == 0) {
+        multitones_buf[multitones_count] = .{
+            .loop = false,
+            .tones = &collected_pip_tones_with_speedup,
+            .volume = 10,
+            .flags = .{
+                .channel = .pulse1,
+            },
+        };
+    } else {
+        multitones_buf[multitones_count] = .{
+            .loop = false,
+            .tones = &collected_pip_tones,
+            .volume = 10,
+            .flags = .{
+                .channel = .pulse1,
+            },
+        };
+    }
+
+    multitones_count += 1;
+}
+
+fn playMenuHappySong() void {
+    if (multitones_count == multitones_buf.len) {
+        return;
+    }
+    multitones_buf[multitones_count] = .{
+        .loop = false,
+        .tones = &menu_happy_song,
+        .volume = 10,
+        .flags = .{
+            .channel = .pulse1,
+        },
+    };
+    multitones_count += 1;
+}
+
+fn playGameOverSadSong() void {
+    if (multitones_count == multitones_buf.len) {
+        return;
+    }
+    multitones_buf[multitones_count] = .{
+        .loop = false,
+        .tones = &game_over_sad_song,
+        .volume = 10,
+        .flags = .{
+            .channel = .pulse1,
+        },
+    };
+    multitones_count += 1;
+}
+
+fn tickMultitones() void {
+    var mt_index: usize = 0;
+    while (mt_index < multitones_count) {
+        const mt = &multitones_buf[mt_index];
+        mt.current_tone_frame += 1;
+        if (mt.current_tone_frame > mt.tones[mt.current_tone].duration) {
+            mt.current_tone += 1;
+            mt.current_tone_frame = 1;
+            if (mt.current_tone >= mt.tones.len) {
+                if (mt.loop) {
+                    mt.current_tone = 0;
+                } else {
+                    std.mem.copyForwards(
+                        MultiTone,
+                        multitones_buf[mt_index .. multitones_count - 1],
+                        multitones_buf[mt_index + 1 .. multitones_count],
+                    );
+                    multitones_count -= 1;
+                    continue;
+                }
+            }
+        }
+        if (mt.current_tone_frame == 1) {
+            const t = &mt.tones[mt.current_tone];
+            if (t.frequency != 0) {
+                mixer.tone(.{
+                    .frequency = .{ .bits = t.frequency },
+                    .duration = @fromBackingInt(t.duration),
+                    .volume = mt.volume,
+                    .flags = mt.flags,
+                });
+            }
+        }
+        mt_index += 1;
+    }
 }
