@@ -15,6 +15,7 @@ const red = defColor(0xf82828);
 //const dred = defColor(0x3e0000);
 const green = defColor(0x00ff00);
 const dgreen = defColor(0x003c00);
+const dgreen2 = defColor(0x006600);
 const blue = defColor(0x7777ff);
 const lblue = defColor(0x6690cb);
 //const purp = defColor(0x820eef);
@@ -160,7 +161,7 @@ pub fn start() void {
         .tail_coord = .{ .x = 16, .y = 14 },
         .body_len = 3,
         .color_1 = green,
-        .color_2 = dgreen,
+        .color_2 = dgreen2,
         .color_eyes = red,
         .current_direction = .up,
         .score = 3,
@@ -683,6 +684,7 @@ pub fn update() void {
                 np.* = red;
             }
         }
+        drawGame(); //Still draw the game so players can see their last state :)
         drawUiGameEnd();
     } else {
         // SELECT+DOWN = intentional reset (avoids accidental resets from SELECT noise).
@@ -789,33 +791,33 @@ const collected_pip_tones_with_speedup = [_]Tone{
 
 const menu_happy_song = [_]Tone{
     .{ .frequency = 0, .duration = 48 },
-    .{ .frequency = g4, .duration = 8 },
-    .{ .frequency = c4, .duration = 12 },
-    .{ .frequency = g4, .duration = 8 },
+    .{ .frequency = g4, .duration = 12 },
+    .{ .frequency = c4, .duration = 16 },
+    .{ .frequency = g4, .duration = 12 },
+    .{ .frequency = e4, .duration = 16 },
+    .{ .frequency = g4, .duration = 12 },
+    .{ .frequency = c4, .duration = 16 },
+    .{ .frequency = g4, .duration = 12 },
+    .{ .frequency = e4, .duration = 16 },
+    .{ .frequency = d4, .duration = 16 },
+    .{ .frequency = c4, .duration = 16 },
     .{ .frequency = e4, .duration = 12 },
-    .{ .frequency = g4, .duration = 8 },
-    .{ .frequency = c4, .duration = 12 },
-    .{ .frequency = g4, .duration = 8 },
-    .{ .frequency = e4, .duration = 12 },
-    .{ .frequency = d4, .duration = 12 },
-    .{ .frequency = c4, .duration = 12 },
-    .{ .frequency = e4, .duration = 8 },
-    .{ .frequency = g4, .duration = 8 },
-    .{ .frequency = c5, .duration = 8 },
+    .{ .frequency = g4, .duration = 12 },
+    .{ .frequency = c5, .duration = 12 },
 };
 
 const game_over_sad_song = [_]Tone{
     .{ .frequency = 0, .duration = 48 },
-    .{ .frequency = g3, .duration = 12 },
-    .{ .frequency = c4, .duration = 12 },
-    .{ .frequency = g3, .duration = 12 },
-    .{ .frequency = e4b, .duration = 12 },
-    .{ .frequency = g3, .duration = 12 },
-    .{ .frequency = c4, .duration = 12 },
-    .{ .frequency = g3, .duration = 12 },
-    .{ .frequency = b3, .duration = 12 },
-    .{ .frequency = g3, .duration = 12 },
-    .{ .frequency = c4, .duration = 24 },
+    .{ .frequency = g3, .duration = 18 },
+    .{ .frequency = c4, .duration = 18 },
+    .{ .frequency = g3, .duration = 18 },
+    .{ .frequency = e4b, .duration = 18 },
+    .{ .frequency = g3, .duration = 18 },
+    .{ .frequency = c4, .duration = 18 },
+    .{ .frequency = g3, .duration = 18 },
+    .{ .frequency = b3, .duration = 18 },
+    .{ .frequency = g3, .duration = 18 },
+    .{ .frequency = c4, .duration = 32 },
 };
 
 fn playCollectedPipTone() void {
@@ -827,7 +829,7 @@ fn playCollectedPipTone() void {
         multitones_buf[multitones_count] = .{
             .loop = false,
             .tones = &collected_pip_tones_with_speedup,
-            .volume = 50,
+            .volume = 100,
             .flags = .{
                 .channel = .pulse1,
             },
@@ -836,7 +838,7 @@ fn playCollectedPipTone() void {
         multitones_buf[multitones_count] = .{
             .loop = false,
             .tones = &collected_pip_tones,
-            .volume = 50,
+            .volume = 100,
             .flags = .{
                 .channel = .pulse1,
             },
@@ -853,7 +855,7 @@ fn playMenuHappySong() void {
     multitones_buf[multitones_count] = .{
         .loop = false,
         .tones = &menu_happy_song,
-        .volume = 50,
+        .volume = 100,
         .flags = .{
             .channel = .pulse1,
         },
@@ -868,7 +870,7 @@ fn playGameOverSadSong() void {
     multitones_buf[multitones_count] = .{
         .loop = false,
         .tones = &game_over_sad_song,
-        .volume = 50,
+        .volume = 100,
         .flags = .{
             .channel = .pulse1,
         },
