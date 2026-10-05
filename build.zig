@@ -83,6 +83,11 @@ pub fn build(b: *Build) void {
         .root_source_file = b.path("carts/sycl-snake/src/main.zig"),
     });
     add_cart(b, &dep, .{
+        .name = "sycl-snake-v2",
+        .optimize = .ReleaseSmall,
+        .root_source_file = b.path("carts/sycl-snake-v2/src/main.zig"),
+    });
+    add_cart(b, &dep, .{
         .name = "blobs",
         .optimize = .ReleaseSmall,
         .root_source_file = b.path("carts/blobs/src/blobs.zig"),
