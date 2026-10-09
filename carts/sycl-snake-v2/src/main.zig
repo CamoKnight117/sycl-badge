@@ -147,6 +147,8 @@ var map_grid: [map_width][map_height]MapLocationType = undefined;
 var wall: Wall = undefined;
 var pip: Pip = undefined;
 
+var directionThisMove: bool = false;
+
 var mixer: cart.mixer.Mixer(.{}) = .{};
 
 pub fn start() void {
@@ -178,8 +180,8 @@ pub fn start() void {
     cart.set_double_buffer_mode(.{ .clear_full_frame = rgb565(black) });
 
     mixer.start_audio();
-
-    playMenuHappySong();
+    if (!quietMode)
+        playMenuHappySong();
 }
 
 fn addWallsToMap() void {
@@ -247,30 +249,37 @@ fn addSnakeToMap() void {
 var movementTick: u8 = 0;
 var movementTickMax: u8 = 50;
 fn tickSnake() void {
-    if (cart.controls.up and snake_1.current_direction != .down) {
+    if (cart.controls.up and snake_1.current_direction != .down and !directionThisMove) {
         snake_1.current_direction = .up;
+        directionThisMove = true;
     }
-    if (cart.controls.down and snake_1.current_direction != .up) {
+    if (cart.controls.down and snake_1.current_direction != .up and !directionThisMove) {
         snake_1.current_direction = .down;
+        directionThisMove = true;
     }
-    if (cart.controls.left and snake_1.current_direction != .right) {
+    if (cart.controls.left and snake_1.current_direction != .right and !directionThisMove) {
         snake_1.current_direction = .left;
+        directionThisMove = true;
     }
-    if (cart.controls.right and snake_1.current_direction != .left) {
+    if (cart.controls.right and snake_1.current_direction != .left and !directionThisMove) {
         snake_1.current_direction = .right;
+        directionThisMove = true;
     }
     movementTick += @min((snake_1.body_len / 10) + 3, 5);
 
     if (movementTick > movementTickMax) {
         movementTick = 0;
+        directionThisMove = false;
         const moveResult = MoveSnake(snake_1.current_direction);
         switch (moveResult) {
             .collision => {
                 gameState = GameState.game_over;
-                playGameOverSadSong();
+                if (!quietMode)
+                    playGameOverSadSong();
             },
             .collected_pip => {
-                playCollectedPipTone();
+                if (!quietMode)
+                    playCollectedPipTone();
             },
             .normal => {},
             .err => {},
@@ -508,7 +517,7 @@ fn drawUiGameEnd() void {
             .str = txt,
             .x = @intCast((cart.screen_width - cart.font_width * txt.len) / 2),
             .y = 80,
-            .text_color = rgb565(grey),
+            .text_color = rgb565(red),
         });
     }
 }
@@ -664,6 +673,9 @@ pub fn update() void {
         }
     } else if (gameState == .game_over) {
         const gameOver = "GAME OVER";
+
+        drawGame(); //Still draw the game so players can see their last state :)
+        drawUiGameEnd();
         if (rand_float() < 0.8) {
             cart.text(.{
                 .str = gameOver,
@@ -684,8 +696,6 @@ pub fn update() void {
                 np.* = red;
             }
         }
-        drawGame(); //Still draw the game so players can see their last state :)
-        drawUiGameEnd();
     } else {
         // SELECT+DOWN = intentional reset (avoids accidental resets from SELECT noise).
         // SELECT alone no longer resets - was causing rapid resets to intro screen.
